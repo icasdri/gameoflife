@@ -65,6 +65,7 @@ enum ManagedInputEvent {
 struct InputManager {
     mouse_pos: Point,
     mouse_depressed: bool,
+    mouse_dragged_tot: f64,
     ctrl_depressed: bool,
 }
 
@@ -73,6 +74,7 @@ impl InputManager {
         InputManager {
             mouse_pos: Point { x: 0.0, y: 0.0 },
             mouse_depressed: false,
+            mouse_dragged_tot: 0.0,
             ctrl_depressed: false,
         }
     }
@@ -83,20 +85,37 @@ impl InputManager {
                 self.mouse_pos.x = x;
                 self.mouse_pos.y = y;
             },
-            Input::Move(Motion::MouseRelative(x, y)) => {
+            Input::Move(Motion::MouseRelative(dx, dy)) => {
                 if self.mouse_depressed {
+                    self.mouse_dragged_tot += dx.abs() + dy.abs();
                     println!("drag");
                     // drag
                 }
             },
-            Input::Move(Motion::MouseScroll(x, y)) => {
-                println!("Mouse scroll [vert: {}] [horz: {}]", y, x);
+            Input::Move(Motion::MouseScroll(dx, dy)) => {
+                if self.ctrl_depressed {
+                    if dy.abs() > 0.08 {
+                        if dy > 0.0 {
+                            println!("zoom in");
+                        } else {
+                            println!("zoom out");
+                        }
+                    }
+                } else {
+                    if dx.abs() + dy.abs() > 0.12 {
+                        println!("scroll");
+                    }
+                }
             },
             Input::Press(Button::Mouse(mouse::MouseButton::Left)) => {
                 self.mouse_depressed = true;
             },
             Input::Release(Button::Mouse(mouse::MouseButton::Left)) => {
-                // need movement calculation here to detect click
+                if self.mouse_dragged_tot < 1.5 {
+                    println!("click");
+                    // click
+                }
+                self.mouse_dragged_tot = 0.0;
                 self.mouse_depressed = false;
             },
             Input::Press(Button::Keyboard(key)) => match key {
