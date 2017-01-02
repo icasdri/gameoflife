@@ -190,45 +190,36 @@ impl ViewportManager {
     }
 }
 
-struct WorldRow<'a> {
-    world: &'a mut World,
-    row: usize,
-}
-
-impl<'a> std::ops::Index<usize> for WorldRow<'a> {
-    type Output = bool;
-
-    fn index(&self, col: usize) -> &bool {
-        &self.world.active[self.row * self.world.size.x + col]
-    }
-}
-
-impl<'a> std::ops::IndexMut<usize> for WorldRow<'a> {
-    fn index_mut(&mut self, col: usize) -> &mut bool {
-        &mut self.world.staged[self.row * self.world.size.x + col]
-    }
-}
-
 struct World {
     size: Coord,
     active: Vec<bool>,
     staged: Vec<bool>,
 }
 
-impl<'a> std::ops::Index<usize> for &'a mut World {
-    type Output = WorldRow<'a>;
+impl std::ops::Index<usize> for World {
+    type Output = [bool];
 
-    fn index(&self, row: usize) -> WorldRow<'a> {
-        &WorldRow {
-            world: *self,
-            row: row,
-        }
+    fn index(&self, row: usize) -> &[bool] {
+        &self.active[row * self.size.x .. (row + 1) * self.size.x]
     }
 }
 
-impl<'a> std::ops::IndexMut<usize> for &'a mut World {
-    fn index_mut<'b>(&'b mut self, row: usize) -> &'b mut WorldRow<'a> {
+impl std::ops::IndexMut<usize> for World {
+    fn index_mut(&mut self, row: usize) -> &mut [bool] {
+        &mut self.staged[row * self.size.x .. (row + 1) * self.size.x]
+    }
+}
 
+impl std::fmt::Display for World {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        for i in 0..self.size.y {
+            let s = &self[i];
+            for c in s {
+                try!(write!(f, "{} ", if *c { "■" } else { "□" }));
+            }
+            try!(writeln!(f, ""));
+        }
+        Ok(())
     }
 }
 
@@ -242,22 +233,22 @@ impl World {
     }
 
     fn new_for_testing() -> Self {
-        let w = World::new(Coord { x: 35, y: 35 });
-        let ww = &mut w;
-        println!("{}", ww[10][0]);
-        w.active[10][10] = true;
-        w.active[11][11] = true;
-        w.active[12][12] = true;
-        w.active[13][10] = true;
+        let mut w = World::new(Coord { x: 35, y: 35 });
+        println!("{}", w[13][10]);
+        w[10][10] = true;
+        w[11][11] = true;
+        w[12][12] = true;
+        w[13][10] = true;
+        w.commit_staged();
         w
     }
-    
+
     fn step(&mut self) {
 
     }
 
     fn commit_staged(&mut self) {
-
+        std::mem::swap(&mut self.active, &mut self.staged);
     }
 
     fn refresh_staged(&mut self) {
@@ -269,6 +260,9 @@ static WIDTH: u32 = 500;
 static HEIGHT: u32 = 400;
 
 fn main() {
+    let mut world = World::new_for_testing();
+    println!("{}", world);
+
     let mut window: PistonWindow =
         WindowSettings::new("Hello World!", [WIDTH, HEIGHT]).build().unwrap();
     window.events.set_ups(1);
