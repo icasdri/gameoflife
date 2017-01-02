@@ -14,6 +14,14 @@ struct Point {
 }
 
 #[derive(Clone, Copy, Debug)]
+struct Mvmt {
+    dx: f64,
+    dy: f64,
+}
+
+type ZoomFactor = f64;
+
+#[derive(Clone, Copy, Debug)]
 struct Geo {
     w: f64,
     h: f64,
@@ -49,10 +57,10 @@ impl Distanceable for Point {
 
 #[derive(Debug)]
 enum ManagedInputEvent {
-    Click { x: f64, y: f64 },
-    Drag { dx: f64, dy: f64 },
-    Scroll { dx: f64, dy: f64 },
-    Zoom { df: f64 },
+    Click(Point),
+    Drag(Mvmt),
+    Scroll(Mvmt),
+    Zoom(ZoomFactor),
 }
 use ManagedInputEvent as MIE;
 
@@ -83,7 +91,7 @@ impl InputManager {
                 if self.mouse_depressed {
                     self.mouse_dragged_tot += dx.abs() + dy.abs();
                     // drag
-                    return Some(MIE::Drag { dx: dx, dy: dy })
+                    return Some(MIE::Drag(Mvmt { dx: dx, dy: dy }));
                 }
             },
             Input::Move(Motion::MouseScroll(dx, dy)) => {
@@ -91,16 +99,16 @@ impl InputManager {
                     if dy.abs() > 0.08 {
                         if dy > 0.0 {
                             // zoom in
-                            return Some(MIE::Zoom { df: dy })
+                            return Some(MIE::Zoom(dy));
                         } else {
                             // soom out
-                            return Some(MIE::Zoom { df: dy })
+                            return Some(MIE::Zoom(dy));
                         }
                     }
                 } else {
                     if dx.abs() + dy.abs() > 0.12 {
                         // scroll
-                        return Some(MIE::Scroll { dx: dx, dy: dy })
+                        return Some(MIE::Scroll(Mvmt { dx: dx, dy: dy }));
                     }
                 }
             },
@@ -113,7 +121,7 @@ impl InputManager {
                 self.mouse_depressed = false;
                 if last_dragged < 1.5 {
                     // click
-                    return Some(MIE::Click { x: self.mouse_pos.x, y: self.mouse_pos.y })
+                    return Some(MIE::Click(Point { x: self.mouse_pos.x, y: self.mouse_pos.y }));
                 }
             },
             Input::Press(Button::Keyboard(key)) => match key {
@@ -123,13 +131,13 @@ impl InputManager {
                 keyboard::Key::NumPadPlus | keyboard::Key::Plus | keyboard::Key::Equals => {
                     if self.ctrl_depressed {
                         // zoom in
-                        return Some(MIE::Zoom { df: 1.5 });
+                        return Some(MIE::Zoom(1.5));
                     }
                 },
                 keyboard::Key::NumPadMinus | keyboard::Key::Minus | keyboard::Key::Underscore => {
                     if self.ctrl_depressed {
                         // zoom out
-                        return Some(MIE::Zoom { df: -1.5 });
+                        return Some(MIE::Zoom(-1.5));
                     }
                 },
                 _ => {}
@@ -169,13 +177,22 @@ impl ViewportManager {
 
 }
 
-enum ConwayCell {
-    Alive,
-    NotAlive,
+struct World {
+    active: Vec<bool>,
+    staged: Vec<bool>,
 }
 
-struct World {
-    arr: Vec<ConwayCell>,
+impl World {
+    fn new(geo: GeoInt) -> Self {
+        World {
+            active: vec![false; (geo.w * geo.h) as usize],
+            staged: vec![false; (geo.w * geo.h) as usize],
+        }
+    }
+
+    fn step() {
+
+    }
 }
 
 static WIDTH: u32 = 500;
