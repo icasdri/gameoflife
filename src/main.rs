@@ -14,6 +14,12 @@ struct Point {
 }
 
 #[derive(Clone, Copy, Debug)]
+struct Coord {
+    x: usize,
+    y: usize,
+}
+
+#[derive(Clone, Copy, Debug)]
 struct Mvmt {
     dx: f64,
     dy: f64,
@@ -28,7 +34,7 @@ struct Geo {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct GeoInt {
+struct WinGeo {
     w: u32,
     h: u32
 }
@@ -157,11 +163,11 @@ impl InputManager {
 struct ViewportManager {
     vp_pos: Point,  // world coords
     vp_geo: Geo,  // world coords
-    window_geo: GeoInt,
+    window_geo: WinGeo,
 }
 
 impl ViewportManager {
-    fn new(initial_window: GeoInt) -> Self {
+    fn new(initial_window: WinGeo) -> Self {
         ViewportManager {
             vp_pos: Point { x: 0.0, y: 0.0 },
             vp_geo: Geo { w: initial_window.w as f64, h: initial_window.h as f64 },
@@ -175,22 +181,86 @@ impl ViewportManager {
         println!("resized");
     }
 
+    fn zoom(factor: ZoomFactor) {
+
+    }
+
+    fn pan(m: Mvmt) {
+
+    }
+}
+
+struct WorldRow<'a> {
+    world: &'a mut World,
+    row: usize,
+}
+
+impl<'a> std::ops::Index<usize> for WorldRow<'a> {
+    type Output = bool;
+
+    fn index(&self, col: usize) -> &bool {
+        &self.world.active[self.row * self.world.size.x + col]
+    }
+}
+
+impl<'a> std::ops::IndexMut<usize> for WorldRow<'a> {
+    fn index_mut(&mut self, col: usize) -> &mut bool {
+        &mut self.world.staged[self.row * self.world.size.x + col]
+    }
 }
 
 struct World {
+    size: Coord,
     active: Vec<bool>,
     staged: Vec<bool>,
 }
 
+impl<'a> std::ops::Index<usize> for &'a mut World {
+    type Output = WorldRow<'a>;
+
+    fn index(&self, row: usize) -> WorldRow<'a> {
+        &WorldRow {
+            world: *self,
+            row: row,
+        }
+    }
+}
+
+impl<'a> std::ops::IndexMut<usize> for &'a mut World {
+    fn index_mut<'b>(&'b mut self, row: usize) -> &'b mut WorldRow<'a> {
+
+    }
+}
+
 impl World {
-    fn new(geo: GeoInt) -> Self {
+    fn new(size: Coord) -> Self {
         World {
-            active: vec![false; (geo.w * geo.h) as usize],
-            staged: vec![false; (geo.w * geo.h) as usize],
+            size: size,
+            active: vec![false; size.x * size.y],
+            staged: vec![false; size.x * size.y],
         }
     }
 
-    fn step() {
+    fn new_for_testing() -> Self {
+        let w = World::new(Coord { x: 35, y: 35 });
+        let ww = &mut w;
+        println!("{}", ww[10][0]);
+        w.active[10][10] = true;
+        w.active[11][11] = true;
+        w.active[12][12] = true;
+        w.active[13][10] = true;
+        w
+    }
+    
+    fn step(&mut self) {
+
+    }
+
+    fn commit_staged(&mut self) {
+
+    }
+
+    fn refresh_staged(&mut self) {
 
     }
 }
@@ -204,7 +274,7 @@ fn main() {
     window.events.set_ups(1);
 
     let mut input_manager = InputManager::new();
-    let mut vp = ViewportManager::new(GeoInt { w: WIDTH, h: HEIGHT });
+    let mut vp = ViewportManager::new(WinGeo { w: WIDTH, h: HEIGHT });
 
     while let Some(ref evt) = window.next() {
         match *evt {
