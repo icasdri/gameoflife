@@ -2,11 +2,6 @@ extern crate piston_window;
 
 use piston_window::*;
 
-trait Distanceable {
-    fn simple_distance_from(&self, other: &Self) -> f64;
-    fn distance_from(&self, other: &Self) -> f64;
-}
-
 #[derive(Clone, Copy, Debug)]
 struct Point {
     x: f64,
@@ -17,6 +12,12 @@ struct Point {
 struct Coord {
     x: usize,
     y: usize,
+}
+
+impl Coord {
+    fn is_within(&self, size: Coord) -> bool {
+        self.x < size.x && self.y < size.y
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -48,16 +49,6 @@ impl std::fmt::Display for Point {
 impl std::fmt::Display for Geo {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "[{} x {}]", self.w, self.h)
-    }
-}
-
-impl Distanceable for Point {
-    fn simple_distance_from(&self, other: &Self) -> f64 {
-        (self.x - other.x).abs() + (self.y - other.y).abs()
-    }
-
-    fn distance_from(&self, other: &Self) -> f64 {
-        unimplemented!();
     }
 }
 
@@ -190,27 +181,49 @@ impl ViewportManager {
     }
 }
 
-struct World {
+struct CoordArray<T: Clone> {
     size: Coord,
-    active: Vec<bool>,
-    staged: Vec<bool>,
+    v: Vec<T>,
 }
 
-impl std::ops::Index<usize> for World {
-    type Output = [bool];
-
-    fn index(&self, row: usize) -> &[bool] {
-        &self.active[row * self.size.x .. (row + 1) * self.size.x]
+impl<T> CoordArray<T> where T: Clone {
+    fn new_filled(default: T, size: Coord) -> Self {
+        CoordArray {
+            size: size,
+            v: vec![default; size.x * size.y],
+        }
     }
 }
 
-impl std::ops::IndexMut<usize> for World {
-    fn index_mut(&mut self, row: usize) -> &mut [bool] {
-        &mut self.staged[row * self.size.x .. (row + 1) * self.size.x]
+impl<T> std::ops::Index<usize> for CoordArray<T> where T: Clone {
+    type Output = [T];
+
+    fn index(&self, row: usize) -> &[T] {
+        &self.v[row * self.size.x .. (row + 1) * self.size.x]
     }
 }
 
-impl std::fmt::Display for World {
+impl<T> std::ops::IndexMut<usize> for CoordArray<T> where T: Clone {
+    fn index_mut(&mut self, row: usize) -> &mut [T] {
+        &mut self.v[row * self.size.x .. (row + 1) * self.size.x]
+    }
+}
+
+impl<T> std::ops::Index<Coord> for CoordArray<T> where T: Clone {
+    type Output = T;
+
+    fn index(&self, coord: Coord) -> &T {
+        &self.v[coord.y * self.size.y + coord.x]
+    }
+}
+
+impl<T> std::ops::IndexMut<Coord> for CoordArray<T> where T: Clone {
+    fn index_mut(&mut self, coord: Coord) -> &mut T {
+        &mut self.v[coord.y * self.size.y + coord.x]
+    }
+}
+
+impl std::fmt::Display for CoordArray<bool> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         for i in 0..self.size.y {
             let s = &self[i];
@@ -223,31 +236,120 @@ impl std::fmt::Display for World {
     }
 }
 
+struct World {
+    size: Coord,
+    active: CoordArray<bool>,
+    staged: CoordArray<bool>,
+}
+
+#[derive(Clone, Copy)]
+enum UnitTranslationOp {
+    ADD,
+    SUB,
+    NOP,
+}
+use UnitTranslationOp as U;
+
+trait ApplyOp<O> {
+    fn apply_op(&self, op: O) -> Result<Self, ()> where Self: Sized;
+}
+
+impl ApplyOp<UnitTranslationOp> for usize {
+    fn apply_op(&self, op: UnitTranslationOp) -> Result<Self, ()> {
+        match op {
+            U::SUB => self.checked_sub(1).ok_or(()),
+            U::ADD => Ok(*self + 1),
+            U::NOP => Ok(*self)
+        }
+    }
+}
+
+impl ApplyOp<(UnitTranslationOp, UnitTranslationOp)> for Coord {
+    fn apply_op(&self, op: (UnitTranslationOp, UnitTranslationOp)) -> Result<Self, ()> {
+        Ok(Coord {
+            x: try!(self.x.apply_op(op.0)),
+            y: try!(self.y.apply_op(op.1)),
+        })
+    }
+}
+
+static NEIGHBORS_TRANSLATIONS: [(UnitTranslationOp, UnitTranslationOp); 8] =
+    [(U::SUB, U::SUB), (U::NOP, U::SUB), (U::ADD, U::SUB),
+     (U::SUB, U::NOP),                   (U::ADD, U::NOP),
+     (U::SUB, U::ADD), (U::NOP, U::ADD), (U::ADD, U::ADD)];
+
+enum CheckedCoord {
+    Valid(Coord),
+    Invalid,
+}
+
+struct NeighborsIter {
+    world_size: Coord,
+    next_op: usize,
+    orig_coord: Coord,
+}
+
+impl NeighborsIter {
+    fn new(world_size: Coord, c: Coord) -> Self {
+        NeighborsIter {
+            world_size: world_size,
+            next_op: 0,
+            orig_coord: c,
+        }
+    }
+}
+
+impl std::iter::Iterator for NeighborsIter {
+    type Item = CheckedCoord;
+
+    fn next(&mut self) -> Option<CheckedCoord> {
+        if self.next_op >= NEIGHBORS_TRANSLATIONS.len() {
+            return None;
+        }
+
+        if let Ok(next_coord) = self.orig_coord.apply_op(NEIGHBORS_TRANSLATIONS[self.next_op]) {
+            self.next_op += 1;
+            if next_coord.is_within(self.world_size) {
+                return Some(CheckedCoord::Valid(next_coord));
+            }
+        }
+
+        Some(CheckedCoord::Invalid)
+    }
+}
+
 impl World {
     fn new(size: Coord) -> Self {
         World {
             size: size,
-            active: vec![false; size.x * size.y],
-            staged: vec![false; size.x * size.y],
+            active: CoordArray::new_filled(false, size),
+            staged: CoordArray::new_filled(false, size),
         }
     }
 
     fn new_for_testing() -> Self {
         let mut w = World::new(Coord { x: 35, y: 35 });
-        println!("{}", w[13][10]);
-        w[10][10] = true;
-        w[11][11] = true;
-        w[12][12] = true;
-        w[13][10] = true;
-        w.commit_staged();
+        w.active[10][10] = true;
+        w.active[11][11] = true;
+        w.active[12][12] = true;
+        w.active[13][10] = true;
+        w.active[Coord { x: 5, y: 3 }] = true;
+        println!("w[4][4] = {}", w.active[4][4]);
+        println!("w Coord(4, 4) = {}", w.active[Coord { x: 4, y: 4}]);
+        println!("w[10][10] = {}", w.active[10][10]);
+        println!("w Coord(10, 10) = {}", w.active[Coord { x: 10, y: 10}]);
         w
+    }
+
+    fn neighbors(&self, c: Coord) -> NeighborsIter {
+        NeighborsIter::new(self.size, c)
     }
 
     fn step(&mut self) {
 
     }
 
-    fn commit_staged(&mut self) {
+    fn swap_staged(&mut self) {
         std::mem::swap(&mut self.active, &mut self.staged);
     }
 
@@ -261,7 +363,7 @@ static HEIGHT: u32 = 400;
 
 fn main() {
     let mut world = World::new_for_testing();
-    println!("{}", world);
+    println!("{}", world.active);
 
     let mut window: PistonWindow =
         WindowSettings::new("Hello World!", [WIDTH, HEIGHT]).build().unwrap();
