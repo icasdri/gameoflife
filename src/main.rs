@@ -364,12 +364,13 @@ impl World {
     }
 
     fn step_coord(&mut self, c: Coord) {
-        match self.num_neighbors(c) {
-            0 | 1 if self.active[c] => self.staged[c] = false,
-            2 | 3 if self.active[c] => self.staged[c] = true,
-            _ if self.active[c] => self.staged[c] = false,
-            3 if !self.active[c] => self.staged[c] = true,
-            _ if !self.active[c] => self.staged[c] = false,
+        let alive = self.active[c];
+        self.staged[c] = match self.num_neighbors(c) {
+            0 | 1 if alive => false,
+            2 | 3 if alive => true,
+            _ if alive => false,
+            3 if !alive => true,
+            _ if !alive => false,
             n @ _ => unreachable!("{} {}", n, self.active[c])
         }
     }
