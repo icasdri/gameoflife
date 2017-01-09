@@ -341,14 +341,17 @@ impl World {
     fn new_for_testing() -> Self {
         let mut w = World::new(Coord { x: 35, y: 35 });
         w.active[10][10] = true;
-        w.active[11][11] = true;
-        w.active[12][12] = true;
-        w.active[13][10] = true;
-        w.active[Coord { x: 5, y: 3 }] = true;
-        println!("w[4][4] = {}", w.active[4][4]);
-        println!("w Coord(4, 4) = {}", w.active[Coord { x: 4, y: 4}]);
-        println!("w[10][10] = {}", w.active[10][10]);
-        println!("w Coord(10, 10) = {}", w.active[Coord { x: 10, y: 10}]);
+        w.active[10][11] = true;
+        w.active[9][12] = true;
+        w.active[11][12] = true;
+        w.active[10][13] = true;
+        w.active[10][14] = true;
+        w.active[10][15] = true;
+        w.active[10][16] = true;
+        w.active[9][17] = true;
+        w.active[11][17] = true;
+        w.active[10][18] = true;
+        w.active[10][19] = true;
         w
     }
 
@@ -365,7 +368,6 @@ impl World {
 
     fn step_coord(&mut self, c: Coord) {
         self.staged[c] = match (self.num_neighbors(c), self.active[c]) {
-            (0 ... 1, true) => false,
             (2 ... 3, true) => true,
             (3, false) => true,
             _ => false,
