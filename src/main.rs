@@ -244,9 +244,7 @@ struct World {
 
 #[derive(Clone, Copy)]
 enum UnitTranslationOp {
-    ADD,
-    SUB,
-    NOP,
+    ADD, SUB, NOP,
 }
 use UnitTranslationOp as U;
 
@@ -278,11 +276,13 @@ static NEIGHBORS_TRANSLATIONS: [(UnitTranslationOp, UnitTranslationOp); 8] =
      (U::SUB, U::NOP),                   (U::ADD, U::NOP),
      (U::SUB, U::ADD), (U::NOP, U::ADD), (U::ADD, U::ADD)];
 
+#[derive(Debug)]
 enum CheckedCoord {
     Valid(Coord),
     Invalid,
 }
 
+#[derive(Clone)]
 struct NeighborsIter {
     world_size: Coord,
     next_op: usize,
@@ -307,14 +307,25 @@ impl std::iter::Iterator for NeighborsIter {
             return None;
         }
 
+        let mut ret = Some(CheckedCoord::Invalid);
+
         if let Ok(next_coord) = self.orig_coord.apply_op(NEIGHBORS_TRANSLATIONS[self.next_op]) {
-            self.next_op += 1;
             if next_coord.is_within(self.world_size) {
-                return Some(CheckedCoord::Valid(next_coord));
+                ret = Some(CheckedCoord::Valid(next_coord));
             }
         }
 
-        Some(CheckedCoord::Invalid)
+        self.next_op += 1;
+        ret
+    }
+}
+
+impl std::fmt::Display for NeighborsIter {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        for i in self.clone() {
+            try!(writeln!(f, "{:?}", i));
+        }
+        Ok(())
     }
 }
 
@@ -345,16 +356,34 @@ impl World {
         NeighborsIter::new(self.size, c)
     }
 
-    fn step(&mut self) {
+    fn num_neighbors(&self, c: Coord) -> usize {
+        self.neighbors(c).map(|n| match n {
+            CheckedCoord::Valid(c) if self.active[c] => 1,
+            _ => 0
+        }).sum()
+    }
 
+    fn step_coord(&mut self, c: Coord) {
+        match self.num_neighbors(c) {
+            0 | 1 if self.active[c] => self.staged[c] = false,
+            2 | 3 if self.active[c] => self.staged[c] = true,
+            _ if self.active[c] => self.staged[c] = false,
+            3 if !self.active[c] => self.staged[c] = true,
+            _ if !self.active[c] => self.staged[c] = false,
+            n @ _ => unreachable!("{} {}", n, self.active[c])
+        }
+    }
+
+    fn step(&mut self) {
+        for x in 0..self.size.x {
+            for y in 0..self.size.y {
+                self.step_coord(Coord{ x: x, y: y});
+            }
+        }
     }
 
     fn swap_staged(&mut self) {
         std::mem::swap(&mut self.active, &mut self.staged);
-    }
-
-    fn refresh_staged(&mut self) {
-
     }
 }
 
@@ -363,6 +392,13 @@ static HEIGHT: u32 = 400;
 
 fn main() {
     let mut world = World::new_for_testing();
+
+    println!("{}", world.neighbors(Coord { x: 0, y: 0}));
+    println!("{}", world.num_neighbors(Coord { x: 0, y: 0}));
+    println!("---");
+    println!("{}", world.neighbors(Coord { x: 11, y: 12}));
+    println!("{}", world.num_neighbors(Coord { x: 11, y: 12}));
+
     println!("{}", world.active);
 
     let mut window: PistonWindow =
@@ -381,7 +417,9 @@ fn main() {
                 }
             }
             Event::Update(UpdateArgs { dt }) => {
-                // println!("UPDATE");
+                world.step();
+                world.swap_staged();
+                println!("{}", world.active);
             },
             _ => {}
         }
