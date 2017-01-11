@@ -174,12 +174,24 @@ impl ViewportManager {
         println!("resized");
     }
 
-    fn zoom(factor: ZoomFactor) {
-
+    fn zoom(&mut self, factor: ZoomFactor) {
+        self.vp_geo.w -= factor;
+        self.vp_geo.h -= factor;
+        if self.vp_geo.w < 0.0 {
+            self.vp_geo.w = 0.0;
+        }
+        if self.vp_geo.h < 0.0 {
+            self.vp_geo.h = 0.0;
+        }
+        self.vp_pos.x += factor / 2.0;
+        self.vp_pos.y += factor / 2.0;
     }
 
-    fn pan(m: Mvmt) {
-
+    fn pan(&mut self, m: Mvmt) {
+        let sl = self.window_geo.w as f64 / self.vp_geo.w;
+        self.vp_pos.x -= m.dx / sl;
+        self.vp_pos.y -= m.dy / sl;
+        println!("{:?}", self.vp_pos);
     }
 
     fn draw(&self, w: &World, c: &Context, g: &mut G2d) {
@@ -195,24 +207,41 @@ impl ViewportManager {
         let tail_w = (self.vp_geo.w.fract() - self.vp_pos.x.fract()) * sl;
         let tail_h = (self.vp_geo.h.fract() - self.vp_pos.y.fract()) * sl;
 
+        let offset_x = if self.vp_pos.x < 0.0 {
+            -self.vp_pos.x * sl
+        } else { 0.0 };
+        let offset_y = if self.vp_pos.y < 0.0 {
+            -self.vp_pos.y * sl
+        } else { 0.0 };
+
         // in world coords
-        let start_x = self.vp_pos.x.trunc() as usize;
-        let start_y = self.vp_pos.y.trunc() as usize;
-        let end_x = start_x + self.vp_geo.w.ceil() as usize;
-        let end_y = start_y + self.vp_geo.h.ceil() as usize;
+        let start_x = if self.vp_pos.x > 0.0 {
+            self.vp_pos.x.trunc() as usize
+        } else { 0 };
+        let start_y = if self.vp_pos.y > 0.0 {
+            self.vp_pos.y.trunc() as usize
+        } else { 0 };
+        let end_x = std::cmp::min(start_x + self.vp_geo.w.ceil() as usize, w.size.x);
+        let end_y = std::cmp::min(start_y + self.vp_geo.h.ceil() as usize, w.size.y);
+
+        rectangle([0.0, 0.0, 0.0, 1.0], [1000.0, 1000.0, 5.0, 5.0], c.transform, g);
 
         for x in start_x..end_x {
             // top side
             if w.active[start_y][x] {
                 rectangle([1.0, 1.0, 0.5, 1.0],
-                          [(x - start_x) as f64 * sl, 0.0, sl, head_h],
+                          [(x - start_x) as f64 * sl + offset_x,
+                           offset_y,
+                           sl, head_h],
                           c.transform, g);
             }
 
             // bottom side
             if w.active[end_y - 1][x] {
                 rectangle([1.0, 1.0, 0.5, 1.0],
-                          [(x - start_x) as f64 * sl, self.window_geo.h as f64 - tail_h, sl, tail_h],
+                          [(x - start_x) as f64 * sl + offset_x,
+                           self.window_geo.h as f64 - tail_h + offset_y,
+                           sl, tail_h],
                           c.transform, g);
             }
         }
@@ -221,14 +250,18 @@ impl ViewportManager {
             // left side
             if w.active[y][start_x] {
                 rectangle([1.0, 1.0, 0.5, 1.0],
-                          [0.0, (y - start_y) as f64 * sl, head_w, sl],
+                          [offset_x,
+                           (y - start_y) as f64 * sl + offset_y,
+                           head_w, sl],
                           c.transform, g);
             }
 
             // right side
             if w.active[y][end_x - 1] {
                 rectangle([1.0, 1.0, 0.5, 1.0],
-                          [self.window_geo.w as f64 - tail_w, (y - start_y) as f64 * sl, tail_w, sl],
+                          [self.window_geo.w as f64 - tail_w + offset_x,
+                           (y - start_y) as f64 * sl + offset_y,
+                           tail_w, sl],
                           c.transform, g);
             }
         }
@@ -237,7 +270,9 @@ impl ViewportManager {
             for y in (start_y + 1)..(end_y - 1) {
                 if w.active[y][x] {
                     rectangle([1.0, 1.0, 0.5, 1.0],
-                              [(x - start_x) as f64 * sl, (y - start_y) as f64 * sl, sl, sl],
+                              [head_w + (x - start_x - 1) as f64 * sl + offset_x,
+                               head_h + (y - start_y - 1) as f64 * sl + offset_y,
+                               sl, sl],
                               c.transform, g);
                 }
             }
@@ -482,6 +517,17 @@ fn main() {
             Event::Input(ref input) => {
                 if let Some(mie) = input_manager.handle_input_event(input) {
                     println!("{:?}", mie);
+                    match mie {
+                        MIE::Click(p) => {
+
+                        },
+                        MIE::Drag(m) | MIE::Scroll(m) => {
+                            vp.pan(m);
+                        },
+                        MIE::Zoom(f) => {
+                            vp.zoom(f);
+                        }
+                    }
                 }
             }
             Event::Update(UpdateArgs { dt }) => {
