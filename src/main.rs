@@ -105,7 +105,7 @@ impl InputManager {
                 } else {
                     if dx.abs() + dy.abs() > 0.12 {
                         // scroll
-                        return Some(MIE::Scroll(Mvmt { dx: dx, dy: dy }));
+                        return Some(MIE::Scroll(Mvmt { dx: 3.0 * dx, dy: 3.0 * dy }));
                     }
                 }
             },
