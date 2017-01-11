@@ -152,16 +152,18 @@ impl InputManager {
 }
 
 struct ViewportManager {
+    world_size: Coord,
     vp_pos: Point,  // world coords
     vp_geo: Geo,  // world coords
     window_geo: WinGeo,
 }
 
 impl ViewportManager {
-    fn new(initial_window: WinGeo) -> Self {
+    fn new(world: &World, initial_window: WinGeo) -> Self {
         ViewportManager {
+            world_size: world.size,
             vp_pos: Point { x: 0.0, y: 0.0 },
-            vp_geo: Geo { w: initial_window.w as f64, h: initial_window.h as f64 },
+            vp_geo: Geo { w: world.size.x as f64, h: world.size.y as f64 },
             window_geo: initial_window,
         }
     }
@@ -178,6 +180,68 @@ impl ViewportManager {
 
     fn pan(m: Mvmt) {
 
+    }
+
+    fn draw(&self, w: &World, c: &Context, g: &mut G2d) {
+        /*
+         * side length of each square in window coords
+         * (note that side length in world coords is 1)
+         */
+        let sl = self.window_geo.w as f64 / self.vp_geo.w;
+
+        // in window coords
+        let head_w = (1.0 - self.vp_pos.x.fract()) * sl;
+        let head_h = (1.0 - self.vp_pos.y.fract()) * sl;
+        let tail_w = (self.vp_geo.w.fract() - self.vp_pos.x.fract()) * sl;
+        let tail_h = (self.vp_geo.h.fract() - self.vp_pos.y.fract()) * sl;
+
+        // in world coords
+        let start_x = self.vp_pos.x.trunc() as usize;
+        let start_y = self.vp_pos.y.trunc() as usize;
+        let end_x = start_x + self.vp_geo.w.ceil() as usize;
+        let end_y = start_y + self.vp_geo.h.ceil() as usize;
+
+        for x in start_x..end_x {
+            // top side
+            if w.active[start_y][x] {
+                rectangle([1.0, 1.0, 0.5, 1.0],
+                          [(x - start_x) as f64 * sl, 0.0, sl, head_h],
+                          c.transform, g);
+            }
+
+            // bottom side
+            if w.active[end_y - 1][x] {
+                rectangle([1.0, 1.0, 0.5, 1.0],
+                          [(x - start_x) as f64 * sl, self.window_geo.h as f64 - tail_h, sl, tail_h],
+                          c.transform, g);
+            }
+        }
+
+        for y in start_y..end_y {
+            // left side
+            if w.active[y][start_x] {
+                rectangle([1.0, 1.0, 0.5, 1.0],
+                          [0.0, (y - start_y) as f64 * sl, head_w, sl],
+                          c.transform, g);
+            }
+
+            // right side
+            if w.active[y][end_x - 1] {
+                rectangle([1.0, 1.0, 0.5, 1.0],
+                          [self.window_geo.w as f64 - tail_w, (y - start_y) as f64 * sl, tail_w, sl],
+                          c.transform, g);
+            }
+        }
+
+        for x in (start_x + 1)..(end_x - 1) {
+            for y in (start_y + 1)..(end_y - 1) {
+                if w.active[y][x] {
+                    rectangle([1.0, 1.0, 0.5, 1.0],
+                              [(x - start_x) as f64 * sl, (y - start_y) as f64 * sl, sl, sl],
+                              c.transform, g);
+                }
+            }
+        }
     }
 }
 
@@ -340,6 +404,10 @@ impl World {
 
     fn new_for_testing() -> Self {
         let mut w = World::new(Coord { x: 35, y: 35 });
+        w.active[0][0] = true;
+        w.active[0][1] = true;
+        w.active[1][0] = true;
+        w.active[8][34] = true;
         w.active[10][10] = true;
         w.active[10][11] = true;
         w.active[9][12] = true;
@@ -406,7 +474,7 @@ fn main() {
     window.events.set_ups(1);
 
     let mut input_manager = InputManager::new();
-    let mut vp = ViewportManager::new(WinGeo { w: WIDTH, h: HEIGHT });
+    let mut vp = ViewportManager::new(&world, WinGeo { w: WIDTH, h: HEIGHT });
 
     while let Some(ref evt) = window.next() {
         match *evt {
@@ -426,13 +494,7 @@ fn main() {
 
         window.draw_2d(evt, |c, g| {
             clear([0.5, 0.5, 0.5, 1.0], g);
-            rectangle([1.0, 0.0, 0.0, 1.0], // red
-                      [0.0, 0.0,
-                       input_manager.mouse_pos.x,
-                       input_manager.mouse_pos.y], // rectangle
-                       c.transform, g);
-            rectangle([0.0, 0.9, 0.0, 1.0], // green
-                      [5.0, 5.0, 20.0, 20.0], c.transform, g);
+            vp.draw(&world, &c, g);
         });
     }
 }
