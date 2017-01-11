@@ -201,20 +201,21 @@ impl ViewportManager {
          */
         let sl = self.window_geo.w as f64 / self.vp_geo.w;
 
-        // in window coords
-        let head_w = (1.0 - self.vp_pos.x.fract()) * sl;
-        let head_h = (1.0 - self.vp_pos.y.fract()) * sl;
-        let tail_w = (self.vp_geo.w.fract() - self.vp_pos.x.fract()) * sl;
-        let tail_h = (self.vp_geo.h.fract() - self.vp_pos.y.fract()) * sl;
+        // in world coords
+        let head_w = if self.vp_pos.x > 0.0 {
+            self.vp_pos.x.fract()
+        } else { 0.0 };
+        let head_h = if self.vp_pos.y > 0.0 {
+            self.vp_pos.y.fract()
+        } else { 0.0 };
 
         let offset_x = if self.vp_pos.x < 0.0 {
-            -self.vp_pos.x * sl
+            -self.vp_pos.x
         } else { 0.0 };
         let offset_y = if self.vp_pos.y < 0.0 {
-            -self.vp_pos.y * sl
+            -self.vp_pos.y
         } else { 0.0 };
 
-        // in world coords
         let start_x = if self.vp_pos.x > 0.0 {
             self.vp_pos.x.trunc() as usize
         } else { 0 };
@@ -224,54 +225,12 @@ impl ViewportManager {
         let end_x = std::cmp::min(start_x + self.vp_geo.w.ceil() as usize, w.size.x);
         let end_y = std::cmp::min(start_y + self.vp_geo.h.ceil() as usize, w.size.y);
 
-        rectangle([0.0, 0.0, 0.0, 1.0], [1000.0, 1000.0, 5.0, 5.0], c.transform, g);
-
         for x in start_x..end_x {
-            // top side
-            if w.active[start_y][x] {
-                rectangle([1.0, 1.0, 0.5, 1.0],
-                          [(x - start_x) as f64 * sl + offset_x,
-                           offset_y,
-                           sl, head_h],
-                          c.transform, g);
-            }
-
-            // bottom side
-            if w.active[end_y - 1][x] {
-                rectangle([1.0, 1.0, 0.5, 1.0],
-                          [(x - start_x) as f64 * sl + offset_x,
-                           self.window_geo.h as f64 - tail_h + offset_y,
-                           sl, tail_h],
-                          c.transform, g);
-            }
-        }
-
-        for y in start_y..end_y {
-            // left side
-            if w.active[y][start_x] {
-                rectangle([1.0, 1.0, 0.5, 1.0],
-                          [offset_x,
-                           (y - start_y) as f64 * sl + offset_y,
-                           head_w, sl],
-                          c.transform, g);
-            }
-
-            // right side
-            if w.active[y][end_x - 1] {
-                rectangle([1.0, 1.0, 0.5, 1.0],
-                          [self.window_geo.w as f64 - tail_w + offset_x,
-                           (y - start_y) as f64 * sl + offset_y,
-                           tail_w, sl],
-                          c.transform, g);
-            }
-        }
-
-        for x in (start_x + 1)..(end_x - 1) {
-            for y in (start_y + 1)..(end_y - 1) {
+            for y in start_y..end_y {
                 if w.active[y][x] {
                     rectangle([1.0, 1.0, 0.5, 1.0],
-                              [head_w + (x - start_x - 1) as f64 * sl + offset_x,
-                               head_h + (y - start_y - 1) as f64 * sl + offset_y,
+                              [((x - start_x) as f64 + offset_x - head_w) * sl,
+                               ((y - start_y) as f64 + offset_y - head_h) * sl,
                                sl, sl],
                               c.transform, g);
                 }
