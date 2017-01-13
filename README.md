@@ -11,8 +11,8 @@ To pan the field of view:
 
 To zoom:
 
-* `Ctrl`+`+` to zoom in
-* `Ctrl`+`-` to zoom out
+* `Ctrl` `+` to zoom in
+* `Ctrl` `-` to zoom out
 * Alternatively, hold `Ctrl` while scrolling up and down
 
 Other controls:
