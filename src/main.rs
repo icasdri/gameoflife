@@ -61,6 +61,7 @@ struct Mvmt {
 }
 
 type ZoomFactor = f64;
+type SpeedDiff = i32;
 
 #[derive(Clone, Copy, Debug)]
 struct Geo {
@@ -110,6 +111,8 @@ enum ManagedInputEvent {
     Drag(Mvmt),
     Scroll(Mvmt),
     Zoom(ZoomFactor),
+    PauseToggle,
+    Speed(SpeedDiff),
 }
 use ManagedInputEvent as MIE;
 
@@ -189,6 +192,15 @@ impl InputManager {
                         return Some(MIE::Zoom(-1.5));
                     }
                 },
+                keyboard::Key::Space => {
+                    return Some(MIE::PauseToggle);
+                },
+                keyboard::Key::LeftBracket => {
+                    return Some(MIE::Speed(-1));
+                },
+                keyboard::Key::RightBracket => {
+                    return Some(MIE::Speed(1));
+                }
                 _ => {}
             },
             Input::Release(Button::Keyboard(key)) => match key {
@@ -238,7 +250,6 @@ impl ViewportManager {
     fn handle_resize(&mut self, new_w: u32, new_h: u32) {
         self.window_geo.w = new_w;
         self.window_geo.h = new_h;
-        println!("resized");
     }
 
     fn zoom(&mut self, factor: ZoomFactor) {
@@ -258,7 +269,6 @@ impl ViewportManager {
         let sl = self.window_geo.w as f64 / self.vp_geo.w;
         self.vp_pos.x -= m.dx / sl;
         self.vp_pos.y -= m.dy / sl;
-        println!("{:?}", self.vp_pos);
     }
 
     fn predraw(&self, w: &World, raw_mouse: &Point) -> PredrawData {
@@ -490,27 +500,6 @@ impl World {
         }
     }
 
-    fn new_for_testing() -> Self {
-        let mut w = World::new(Coord { x: 35, y: 35 });
-        w.active[0][0] = true;
-        w.active[0][1] = true;
-        w.active[1][0] = true;
-        w.active[8][34] = true;
-        w.active[10][10] = true;
-        w.active[10][11] = true;
-        w.active[9][12] = true;
-        w.active[11][12] = true;
-        w.active[10][13] = true;
-        w.active[10][14] = true;
-        w.active[10][15] = true;
-        w.active[10][16] = true;
-        w.active[9][17] = true;
-        w.active[11][17] = true;
-        w.active[10][18] = true;
-        w.active[10][19] = true;
-        w
-    }
-
     fn neighbors(&self, c: Coord) -> NeighborsIter {
         NeighborsIter::new(self.size, c)
     }
@@ -546,23 +535,28 @@ impl World {
 static WIDTH: u32 = 500;
 static HEIGHT: u32 = 400;
 
+fn update_title(window: &mut PistonWindow, paused: bool, speed: u64) {
+    window.set_title(format!(
+        "{}Conway's Game of Life (speed: {} Hz)",
+        if paused { "(PAUSED) " } else { "" },
+        speed
+    ));
+}
+
 fn main() {
-    let mut world = World::new_for_testing();
-
-    println!("{}", world.neighbors(Coord { x: 0, y: 0}));
-    println!("{}", world.num_neighbors(Coord { x: 0, y: 0}));
-    println!("---");
-    println!("{}", world.neighbors(Coord { x: 11, y: 12}));
-    println!("{}", world.num_neighbors(Coord { x: 11, y: 12}));
-
-    println!("{}", world.active);
+    let mut world = World::new(Coord { x: 150, y: 150 });
 
     let mut window: PistonWindow =
-        WindowSettings::new("Hello World!", [WIDTH, HEIGHT]).build().unwrap();
+        WindowSettings::new("Initializing...", [WIDTH, HEIGHT]).build().unwrap();
     window.events.set_ups(1);
 
     let mut im = InputManager::new();
     let mut vp = ViewportManager::new(&world, WinGeo { w: WIDTH, h: HEIGHT });
+
+    let mut paused = false;
+    let mut speed = 1;
+
+    update_title(&mut window, paused, speed);
 
     while let Some(ref evt) = window.next() {
         let pd = vp.predraw(&world, &im.mouse_pos);
@@ -571,7 +565,6 @@ fn main() {
             Event::Input(Input::Resize(new_w, new_h)) => vp.handle_resize(new_w, new_h),
             Event::Input(ref input) => {
                 if let Some(mie) = im.handle_input_event(input) {
-                    println!("{:?}", mie);
                     match mie {
                         MIE::Click(p) => {
                             if let Some(mouse) = pd.maybe_mouse {
@@ -584,14 +577,33 @@ fn main() {
                         },
                         MIE::Zoom(f) => {
                             vp.zoom(f);
+                        },
+                        MIE::PauseToggle => {
+                            if paused {
+                                paused = false;
+                                window.events.set_ups(speed);
+                            } else {
+                                paused = true;
+                                window.events.set_ups(1);
+                            }
+                            update_title(&mut window, paused, speed);
+                        },
+                        MIE::Speed(diff) => {
+                            let s = speed as i32 + diff;
+                            if s > 0 {
+                                speed = s as u64;
+                                window.events.set_ups(speed);
+                                update_title(&mut window, paused, speed);
+                            }
                         }
                     }
                 }
             }
             Event::Update(UpdateArgs { dt }) => {
-                world.step();
-                world.swap_staged();
-                println!("{}", world.active);
+                if !paused {
+                    world.step();
+                    world.swap_staged();
+                }
             },
             _ => {}
         }
