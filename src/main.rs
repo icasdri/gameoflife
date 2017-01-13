@@ -249,12 +249,14 @@ impl ViewportManager {
         }
 
         let mouse_x = {
-            let x = ((mouse.x / sl) - offset_x + head_w + start_x as f64).trunc();
-            if x > 0.0 { x as usize } else { return None; }
+            let xf = ((mouse.x / sl) - offset_x + head_w + start_x as f64).trunc();
+            let x = if xf >= 0.0 { xf as usize } else { return None; };
+            if x < w.size.x { x } else { return None; }
         };
         let mouse_y = {
-            let y = ((mouse.y / sl) - offset_y + head_h + start_y as f64).trunc();
-            if y > 0.0 { y as usize } else { return None; }
+            let yf = ((mouse.y / sl) - offset_y + head_h + start_y as f64).trunc();
+            let y = if yf >= 0.0 { yf as usize } else { return None; };
+            if y < w.size.y { y } else { return None; }
         };
 
         rectangle(OVERLAY_COLOR,
