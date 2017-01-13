@@ -151,6 +151,12 @@ impl InputManager {
     }
 }
 
+
+static BASE_COLOR: [f32; 4] = [0.5, 0.5, 0.5, 1.0];
+static ALIVE_COLOR: [f32; 4] = [0.9, 0.9, 0.35, 1.0];
+static OVERLAY_COLOR: [f32; 4] = [1.0, 1.0, 1.0, 0.81];
+
+
 struct ViewportManager {
     world_size: Coord,
     vp_pos: Point,  // world coords
@@ -194,7 +200,12 @@ impl ViewportManager {
         println!("{:?}", self.vp_pos);
     }
 
-    fn draw(&self, w: &World, c: &Context, g: &mut G2d) {
+    /**
+     * Draws world based on current view port.
+     * Also picks mouse based on given point, draws overlay on mouse-picked
+     * tile, and returns world coordinate of tile picked.
+     */
+    fn draw(&self, w: &World, mouse: &Point, c: &Context, g: &mut G2d) -> Option<Coord> {
         /*
          * side length of each square in window coords
          * (note that side length in world coords is 1)
@@ -228,7 +239,7 @@ impl ViewportManager {
         for x in start_x..end_x {
             for y in start_y..end_y {
                 if w.active[y][x] {
-                    rectangle([1.0, 1.0, 0.5, 1.0],
+                    rectangle(ALIVE_COLOR,
                               [((x - start_x) as f64 + offset_x - head_w) * sl,
                                ((y - start_y) as f64 + offset_y - head_h) * sl,
                                sl, sl],
@@ -236,6 +247,23 @@ impl ViewportManager {
                 }
             }
         }
+
+        let mouse_x = {
+            let x = ((mouse.x / sl) - offset_x + head_w + start_x as f64).trunc();
+            if x > 0.0 { x as usize } else { return None; }
+        };
+        let mouse_y = {
+            let y = ((mouse.y / sl) - offset_y + head_h + start_y as f64).trunc();
+            if y > 0.0 { y as usize } else { return None; }
+        };
+
+        rectangle(OVERLAY_COLOR,
+                  [((mouse_x - start_x) as f64 + offset_x - head_w) * sl,
+                   ((mouse_y - start_y) as f64 + offset_y - head_h) * sl,
+                   sl, sl],
+                  c.transform, g);
+
+        Some(Coord { x: mouse_x, y: mouse_y })
     }
 }
 
@@ -467,14 +495,14 @@ fn main() {
         WindowSettings::new("Hello World!", [WIDTH, HEIGHT]).build().unwrap();
     window.events.set_ups(1);
 
-    let mut input_manager = InputManager::new();
+    let mut im = InputManager::new();
     let mut vp = ViewportManager::new(&world, WinGeo { w: WIDTH, h: HEIGHT });
 
     while let Some(ref evt) = window.next() {
         match *evt {
             Event::Input(Input::Resize(new_w, new_h)) => vp.handle_resize(new_w, new_h),
             Event::Input(ref input) => {
-                if let Some(mie) = input_manager.handle_input_event(input) {
+                if let Some(mie) = im.handle_input_event(input) {
                     println!("{:?}", mie);
                     match mie {
                         MIE::Click(p) => {
@@ -498,8 +526,8 @@ fn main() {
         }
 
         window.draw_2d(evt, |c, g| {
-            clear([0.5, 0.5, 0.5, 1.0], g);
-            vp.draw(&world, &c, g);
+            clear(BASE_COLOR, g);
+            vp.draw(&world, &im.mouse_pos, &c, g);
         });
     }
 }
