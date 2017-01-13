@@ -8,6 +8,15 @@ struct Point {
     y: f64,
 }
 
+impl Point {
+    fn map<F: Fn(f64) -> f64>(&self, f: F) -> Self {
+        Point {
+            x: f(self.x),
+            y: f(self.y),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 struct Coord {
     x: usize,
@@ -17,6 +26,31 @@ struct Coord {
 impl Coord {
     fn is_within(&self, size: Coord) -> bool {
         self.x < size.x && self.y < size.y
+    }
+
+    fn map<F: Fn(usize) -> usize>(&self, f: F) -> Self {
+        Coord {
+            x: f(self.x),
+            y: f(self.y),
+        }
+    }
+}
+
+impl From<Point> for Coord {
+    fn from(p: Point) -> Self {
+        Coord {
+            x: p.x as usize,
+            y: p.y as usize,
+        }
+    }
+}
+
+impl From<Geo> for Coord {
+    fn from(g: Geo) -> Self {
+        Coord {
+            x: g.w as usize,
+            y: g.h as usize,
+        }
     }
 }
 
@@ -32,6 +66,24 @@ type ZoomFactor = f64;
 struct Geo {
     w: f64,
     h: f64,
+}
+
+impl Geo {
+    fn map<F: Fn(f64) -> f64>(&self, f: F) -> Self {
+        Geo {
+            w: f(self.w),
+            h: f(self.h),
+        }
+    }
+}
+
+impl From<Point> for Geo {
+    fn from(p: Point) -> Self {
+        Geo {
+            w: p.x,
+            h: p.y,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -164,6 +216,15 @@ struct ViewportManager {
     window_geo: WinGeo,
 }
 
+struct PredrawData {
+    sl: f64,
+    head: Geo,
+    offset: Point,
+    start: Coord,
+    end: Coord,
+    maybe_mouse: Option<Coord>,
+}
+
 impl ViewportManager {
     fn new(world: &World, initial_window: WinGeo) -> Self {
         ViewportManager {
@@ -200,72 +261,75 @@ impl ViewportManager {
         println!("{:?}", self.vp_pos);
     }
 
-    /**
-     * Draws world based on current view port.
-     * Also picks mouse based on given point, draws overlay on mouse-picked
-     * tile, and returns world coordinate of tile picked.
-     */
-    fn draw(&self, w: &World, mouse: &Point, c: &Context, g: &mut G2d) -> Option<Coord> {
+    fn predraw(&self, w: &World, raw_mouse: &Point) -> PredrawData {
         /*
          * side length of each square in window coords
          * (note that side length in world coords is 1)
          */
         let sl = self.window_geo.w as f64 / self.vp_geo.w;
 
-        // in world coords
-        let head_w = if self.vp_pos.x > 0.0 {
-            self.vp_pos.x.fract()
-        } else { 0.0 };
-        let head_h = if self.vp_pos.y > 0.0 {
-            self.vp_pos.y.fract()
-        } else { 0.0 };
+        let head: Geo = self.vp_pos.map(|f| if f > 0.0 { f.fract() } else { 0.0 }).into();
+        let offset: Point = self.vp_pos.map(|f| if f < 0.0 { -f } else { 0.0 });
+        let start: Coord = self.vp_pos.map(|f| if f > 0.0 { f.trunc() } else { 0.0 }).into();
+        let end = Coord {
+            x: std::cmp::min(start.x + 1 + self.vp_geo.w.ceil() as usize, w.size.x),
+            y: std::cmp::min(start.y + 1 + self.vp_geo.h.ceil() as usize, w.size.y),
+        };
 
-        let offset_x = if self.vp_pos.x < 0.0 {
-            -self.vp_pos.x
-        } else { 0.0 };
-        let offset_y = if self.vp_pos.y < 0.0 {
-            -self.vp_pos.y
-        } else { 0.0 };
+        let mouse_x = {
+            let xf = ((raw_mouse.x / sl) - offset.x + head.w + start.x as f64).trunc();
+            if xf >= 0.0 {
+                let x = xf as usize;
+                if x < w.size.x { Some(x) } else { None }
+            } else { None }
+        };
+        let mouse_y = {
+            let yf = ((raw_mouse.y / sl) - offset.y + head.h + start.y as f64).trunc();
+            if yf >= 0.0 {
+                let y = yf as usize;
+                if y < w.size.y { Some(y) } else { None }
+            } else { None }
+        };
 
-        let start_x = if self.vp_pos.x > 0.0 {
-            self.vp_pos.x.trunc() as usize
-        } else { 0 };
-        let start_y = if self.vp_pos.y > 0.0 {
-            self.vp_pos.y.trunc() as usize
-        } else { 0 };
-        let end_x = std::cmp::min(start_x + 1 + self.vp_geo.w.ceil() as usize, w.size.x);
-        let end_y = std::cmp::min(start_y + 1 + self.vp_geo.h.ceil() as usize, w.size.y);
+        PredrawData {
+            sl: sl,
+            head: head,
+            offset: offset,
+            start: start,
+            end: end,
+            maybe_mouse: if mouse_x.is_some() && mouse_y.is_some() {
+                Some(Coord { x: mouse_x.unwrap(), y: mouse_y.unwrap() })
+            } else { None },
+        }
+    }
 
-        for x in start_x..end_x {
-            for y in start_y..end_y {
+    /**
+     * Draws world based on current view port.
+     * Also picks mouse based on given point, draws overlay on mouse-picked
+     * tile, and returns world coordinate of tile picked.
+     */
+    fn draw(&self, pd: &PredrawData, w: &World, c: &Context, g: &mut G2d) {
+        let &PredrawData { sl, head, offset, start, end, maybe_mouse } = pd;
+
+        for x in start.x..end.x {
+            for y in start.y..end.y {
                 if w.active[y][x] {
                     rectangle(ALIVE_COLOR,
-                              [((x - start_x) as f64 + offset_x - head_w) * sl,
-                               ((y - start_y) as f64 + offset_y - head_h) * sl,
+                              [((x - start.x) as f64 + offset.x - head.w) * sl,
+                               ((y - start.y) as f64 + offset.y - head.h) * sl,
                                sl, sl],
                               c.transform, g);
                 }
             }
         }
 
-        let mouse_x = {
-            let xf = ((mouse.x / sl) - offset_x + head_w + start_x as f64).trunc();
-            let x = if xf >= 0.0 { xf as usize } else { return None; };
-            if x < w.size.x { x } else { return None; }
-        };
-        let mouse_y = {
-            let yf = ((mouse.y / sl) - offset_y + head_h + start_y as f64).trunc();
-            let y = if yf >= 0.0 { yf as usize } else { return None; };
-            if y < w.size.y { y } else { return None; }
-        };
-
-        rectangle(OVERLAY_COLOR,
-                  [((mouse_x - start_x) as f64 + offset_x - head_w) * sl,
-                   ((mouse_y - start_y) as f64 + offset_y - head_h) * sl,
-                   sl, sl],
-                  c.transform, g);
-
-        Some(Coord { x: mouse_x, y: mouse_y })
+        if let Some(mouse) = maybe_mouse {
+            rectangle(OVERLAY_COLOR,
+                      [((mouse.x - start.x) as f64 + offset.x - head.w) * sl,
+                       ((mouse.y - start.y) as f64 + offset.y - head.h) * sl,
+                       sl, sl],
+                      c.transform, g);
+        }
     }
 }
 
@@ -501,6 +565,8 @@ fn main() {
     let mut vp = ViewportManager::new(&world, WinGeo { w: WIDTH, h: HEIGHT });
 
     while let Some(ref evt) = window.next() {
+        let pd = vp.predraw(&world, &im.mouse_pos);
+
         match *evt {
             Event::Input(Input::Resize(new_w, new_h)) => vp.handle_resize(new_w, new_h),
             Event::Input(ref input) => {
@@ -508,7 +574,10 @@ fn main() {
                     println!("{:?}", mie);
                     match mie {
                         MIE::Click(p) => {
-
+                            if let Some(mouse) = pd.maybe_mouse {
+                                let mut c = &mut world.active[mouse];
+                                *c = !*c;
+                            }
                         },
                         MIE::Drag(m) | MIE::Scroll(m) => {
                             vp.pan(m);
@@ -529,7 +598,7 @@ fn main() {
 
         window.draw_2d(evt, |c, g| {
             clear(BASE_COLOR, g);
-            vp.draw(&world, &im.mouse_pos, &c, g);
+            vp.draw(&pd, &world, &c, g);
         });
     }
 }
