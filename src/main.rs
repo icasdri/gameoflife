@@ -313,11 +313,6 @@ impl ViewportManager {
         }
     }
 
-    /**
-     * Draws world based on current view port.
-     * Also picks mouse based on given point, draws overlay on mouse-picked
-     * tile, and returns world coordinate of tile picked.
-     */
     fn draw(&self, pd: &PredrawData, w: &World, c: &Context, g: &mut G2d) {
         let &PredrawData { sl, head, offset, start, end, maybe_mouse } = pd;
 
@@ -404,39 +399,10 @@ struct World {
     staged: CoordArray<bool>,
 }
 
-#[derive(Clone, Copy)]
-enum UnitTranslationOp {
-    ADD, SUB, NOP,
-}
-use UnitTranslationOp as U;
-
-trait ApplyOp<O> {
-    fn apply_op(&self, op: O) -> Result<Self, ()> where Self: Sized;
-}
-
-impl ApplyOp<UnitTranslationOp> for usize {
-    fn apply_op(&self, op: UnitTranslationOp) -> Result<Self, ()> {
-        match op {
-            U::SUB => self.checked_sub(1).ok_or(()),
-            U::ADD => Ok(*self + 1),
-            U::NOP => Ok(*self)
-        }
-    }
-}
-
-impl ApplyOp<(UnitTranslationOp, UnitTranslationOp)> for Coord {
-    fn apply_op(&self, op: (UnitTranslationOp, UnitTranslationOp)) -> Result<Self, ()> {
-        Ok(Coord {
-            x: try!(self.x.apply_op(op.0)),
-            y: try!(self.y.apply_op(op.1)),
-        })
-    }
-}
-
-static NEIGHBORS_TRANSLATIONS: [(UnitTranslationOp, UnitTranslationOp); 8] =
-    [(U::SUB, U::SUB), (U::NOP, U::SUB), (U::ADD, U::SUB),
-     (U::SUB, U::NOP),                   (U::ADD, U::NOP),
-     (U::SUB, U::ADD), (U::NOP, U::ADD), (U::ADD, U::ADD)];
+static NEIGHBORS_TRANSLATIONS: [(i32, i32); 8] =
+    [(-1, -1), (0, -1), (1, -1),
+     (-1,  0),          (1,  0),
+     (-1,  1), (0,  1), (1,  1)];
 
 #[derive(Debug)]
 enum CheckedCoord {
@@ -469,16 +435,22 @@ impl std::iter::Iterator for NeighborsIter {
             return None;
         }
 
-        let mut ret = Some(CheckedCoord::Invalid);
+        let (dx, dy) = NEIGHBORS_TRANSLATIONS[self.next_op];
 
-        if let Ok(next_coord) = self.orig_coord.apply_op(NEIGHBORS_TRANSLATIONS[self.next_op]) {
-            if next_coord.is_within(self.world_size) {
-                ret = Some(CheckedCoord::Valid(next_coord));
-            }
-        }
+        let x = self.orig_coord.x as i32 + dx;
+        let y = self.orig_coord.y as i32 + dy;
 
         self.next_op += 1;
-        ret
+
+        if x < 0 || x as usize >= self.world_size.x {
+            return Some(CheckedCoord::Invalid);
+        }
+
+        if y < 0 || y as usize >= self.world_size.y {
+            return Some(CheckedCoord::Invalid);
+        }
+
+        Some(CheckedCoord::Valid(Coord { x: x as usize, y: y as usize}))
     }
 }
 
@@ -547,7 +519,7 @@ fn main() {
     let mut world = World::new(Coord { x: 150, y: 150 });
 
     let mut window: PistonWindow =
-        WindowSettings::new("Initializing...", [WIDTH, HEIGHT]).build().unwrap();
+        WindowSettings::new("Conway's Game of Life", [WIDTH, HEIGHT]).build().unwrap();
     window.events.set_ups(1);
 
     let mut im = InputManager::new();
