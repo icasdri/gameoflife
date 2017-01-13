@@ -23,19 +23,6 @@ struct Coord {
     y: usize,
 }
 
-impl Coord {
-    fn is_within(&self, size: Coord) -> bool {
-        self.x < size.x && self.y < size.y
-    }
-
-    fn map<F: Fn(usize) -> usize>(&self, f: F) -> Self {
-        Coord {
-            x: f(self.x),
-            y: f(self.y),
-        }
-    }
-}
-
 impl From<Point> for Coord {
     fn from(p: Point) -> Self {
         Coord {
@@ -45,37 +32,10 @@ impl From<Point> for Coord {
     }
 }
 
-impl From<Geo> for Coord {
-    fn from(g: Geo) -> Self {
-        Coord {
-            x: g.w as usize,
-            y: g.h as usize,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-struct Mvmt {
-    dx: f64,
-    dy: f64,
-}
-
-type ZoomFactor = f64;
-type SpeedDiff = i32;
-
 #[derive(Clone, Copy, Debug)]
 struct Geo {
     w: f64,
     h: f64,
-}
-
-impl Geo {
-    fn map<F: Fn(f64) -> f64>(&self, f: F) -> Self {
-        Geo {
-            w: f(self.w),
-            h: f(self.h),
-        }
-    }
 }
 
 impl From<Point> for Geo {
@@ -87,13 +47,13 @@ impl From<Point> for Geo {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-struct WinGeo {
-    w: u32,
-    h: u32
+impl std::fmt::Display for Point {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "({}, {})", self.x, self.y)
+    }
 }
 
-impl std::fmt::Display for Point {
+impl std::fmt::Display for Coord {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "({}, {})", self.x, self.y)
     }
@@ -104,6 +64,21 @@ impl std::fmt::Display for Geo {
         write!(f, "[{} x {}]", self.w, self.h)
     }
 }
+
+#[derive(Clone, Copy, Debug)]
+struct WinGeo {
+    w: u32,
+    h: u32
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Mvmt {
+    dx: f64,
+    dy: f64,
+}
+
+type ZoomFactor = f64;
+type SpeedDiff = i32;
 
 #[derive(Debug)]
 enum ManagedInputEvent {
@@ -220,9 +195,7 @@ static BASE_COLOR: [f32; 4] = [0.5, 0.5, 0.5, 1.0];
 static ALIVE_COLOR: [f32; 4] = [0.9, 0.9, 0.35, 1.0];
 static OVERLAY_COLOR: [f32; 4] = [1.0, 1.0, 1.0, 0.81];
 
-
 struct ViewportManager {
-    world_size: Coord,
     vp_pos: Point,  // world coords
     vp_geo: Geo,  // world coords
     window_geo: WinGeo,
@@ -240,7 +213,6 @@ struct PredrawData {
 impl ViewportManager {
     fn new(world: &World, initial_window: WinGeo) -> Self {
         ViewportManager {
-            world_size: world.size,
             vp_pos: Point { x: 0.0, y: 0.0 },
             vp_geo: Geo { w: world.size.x as f64, h: world.size.y as f64 },
             window_geo: initial_window,
@@ -504,8 +476,8 @@ impl World {
     }
 }
 
-static WIDTH: u32 = 500;
-static HEIGHT: u32 = 400;
+static WIDTH: u32 = 950;
+static HEIGHT: u32 = 700;
 
 fn update_title(window: &mut PistonWindow, paused: bool, speed: u64) {
     window.set_title(format!(
@@ -538,7 +510,7 @@ fn main() {
             Event::Input(ref input) => {
                 if let Some(mie) = im.handle_input_event(input) {
                     match mie {
-                        MIE::Click(p) => {
+                        MIE::Click(_) => {
                             if let Some(mouse) = pd.maybe_mouse {
                                 let mut c = &mut world.active[mouse];
                                 *c = !*c;
@@ -571,7 +543,7 @@ fn main() {
                     }
                 }
             }
-            Event::Update(UpdateArgs { dt }) => {
+            Event::Update(_) => {
                 if !paused {
                     world.step();
                     world.swap_staged();
