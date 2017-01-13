@@ -1,3 +1,11 @@
+/*
+ * Copyright 2017 icasdri
+ *
+ * This file is part of gameoflife. The original source code for gameoflife can
+ * be found at <https://github.com/icasdri/gameoflife>. See COPYING for
+ * licensing details.
+ */
+
 extern crate piston_window;
 
 use piston_window::*;
