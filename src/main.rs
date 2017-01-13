@@ -222,8 +222,8 @@ impl ViewportManager {
         let start_y = if self.vp_pos.y > 0.0 {
             self.vp_pos.y.trunc() as usize
         } else { 0 };
-        let end_x = std::cmp::min(start_x + self.vp_geo.w.ceil() as usize, w.size.x);
-        let end_y = std::cmp::min(start_y + self.vp_geo.h.ceil() as usize, w.size.y);
+        let end_x = std::cmp::min(start_x + 1 + self.vp_geo.w.ceil() as usize, w.size.x);
+        let end_y = std::cmp::min(start_y + 1 + self.vp_geo.h.ceil() as usize, w.size.y);
 
         for x in start_x..end_x {
             for y in start_y..end_y {
