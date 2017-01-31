@@ -175,15 +175,33 @@ impl InputManager {
                         return Some(MIE::Zoom(-1.5));
                     }
                 },
-                keyboard::Key::Space => {
+                keyboard::Key::M => {
+                    return Some(MIE::Zoom(1.5));
+                },
+                keyboard::Key::N => {
+                    return Some(MIE::Zoom(-1.5));
+                },
+                keyboard::Key::Space | keyboard::Key::P => {
                     return Some(MIE::PauseToggle);
                 },
-                keyboard::Key::LeftBracket => {
+                keyboard::Key::LeftBracket | keyboard::Key::U => {
                     return Some(MIE::Speed(-1));
                 },
-                keyboard::Key::RightBracket => {
+                keyboard::Key::RightBracket | keyboard::Key::I => {
                     return Some(MIE::Speed(1));
-                }
+                },
+                keyboard::Key::Up | keyboard::Key::W | keyboard::Key::K => {
+                    return Some(MIE::Scroll(Mvmt { dx: 0.0, dy: 6.0 }));
+                },
+                keyboard::Key::Down | keyboard::Key::S | keyboard::Key::J => {
+                    return Some(MIE::Scroll(Mvmt { dx: 0.0, dy: -6.0 }));
+                },
+                keyboard::Key::Left | keyboard::Key::A | keyboard::Key::H => {
+                    return Some(MIE::Scroll(Mvmt { dx: 6.0, dy: 0.0 }));
+                },
+                keyboard::Key::Right | keyboard::Key::D | keyboard::Key::L => {
+                    return Some(MIE::Scroll(Mvmt { dx: -6.0, dy: 0.0 }));
+                },
                 _ => {}
             },
             Input::Release(Button::Keyboard(key)) => match key {
