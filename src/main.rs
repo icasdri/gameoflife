@@ -516,50 +516,47 @@ fn main() {
         let pd = vp.predraw(&world, &im.mouse_pos);
 
         match *evt {
-            Event::Input(Input::Resize(new_w, new_h)) => vp.handle_resize(new_w, new_h),
-            Event::Input(ref input) => {
-                if let Some(mie) = im.handle_input_event(input) {
-                    match mie {
-                        MIE::Click(_) => {
-                            if let Some(mouse) = pd.maybe_mouse {
-                                let mut c = &mut world.active[mouse];
-                                *c = !*c;
-                            }
-                        },
-                        MIE::Drag(m) | MIE::Scroll(m) => {
-                            vp.pan(m);
-                        },
-                        MIE::Zoom(f) => {
-                            vp.zoom(f);
-                        },
-                        MIE::PauseToggle => {
-                            if paused {
-                                paused = false;
-                                window.events.set_ups(speed);
-                            } else {
-                                paused = true;
-                                window.events.set_ups(1);
-                            }
-                            update_title(&mut window, paused, speed);
-                        },
-                        MIE::Speed(diff) => {
-                            let s = speed as i32 + diff;
-                            if s > 0 {
-                                speed = s as u64;
-                                window.events.set_ups(speed);
-                                update_title(&mut window, paused, speed);
-                            }
-                        }
-                    }
-                }
-            }
-            Event::Update(_) => {
+            Input::Resize(new_w, new_h) => vp.handle_resize(new_w, new_h),
+            Input::Update(_) => {
                 if !paused {
                     world.step();
                     world.swap_staged();
                 }
             },
-            _ => {}
+            _ => if let Some(mie) = im.handle_input_event(&evt) {
+                match mie {
+                    MIE::Click(_) => {
+                        if let Some(mouse) = pd.maybe_mouse {
+                            let mut c = &mut world.active[mouse];
+                            *c = !*c;
+                        }
+                    },
+                    MIE::Drag(m) | MIE::Scroll(m) => {
+                        vp.pan(m);
+                    },
+                    MIE::Zoom(f) => {
+                        vp.zoom(f);
+                    },
+                    MIE::PauseToggle => {
+                        if paused {
+                            paused = false;
+                            window.events.set_ups(speed);
+                        } else {
+                            paused = true;
+                            window.events.set_ups(1);
+                        }
+                        update_title(&mut window, paused, speed);
+                    },
+                    MIE::Speed(diff) => {
+                        let s = speed as i32 + diff;
+                        if s > 0 {
+                            speed = s as u64;
+                            window.events.set_ups(speed);
+                            update_title(&mut window, paused, speed);
+                        }
+                    }
+                }
+            }
         }
 
         window.draw_2d(evt, |c, g| {
