@@ -309,11 +309,13 @@ impl ViewportManager {
         }
 
         if let Some(mouse) = maybe_mouse {
-            rectangle(OVERLAY_COLOR,
-                      [((mouse.x - start.x) as f64 + offset.x - head.w) * sl,
-                       ((mouse.y - start.y) as f64 + offset.y - head.h) * sl,
-                       sl, sl],
-                      c.transform, g);
+            if mouse.x >= start.x && mouse.y >= start.y {
+                rectangle(OVERLAY_COLOR,
+                          [((mouse.x - start.x) as f64 + offset.x - head.w) * sl,
+                           ((mouse.y - start.y) as f64 + offset.y - head.h) * sl,
+                           sl, sl],
+                          c.transform, g);
+            }
         }
     }
 }
