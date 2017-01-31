@@ -222,6 +222,7 @@ static ALIVE_COLOR: [f32; 4] = [0.9, 0.9, 0.35, 1.0];
 static OVERLAY_COLOR: [f32; 4] = [1.0, 1.0, 1.0, 0.81];
 
 struct ViewportManager {
+    nonce: usize,
     vp_pos: Point,  // world coords
     vp_geo: Geo,  // world coords
     window_geo: WinGeo,
@@ -239,6 +240,7 @@ struct PredrawData {
 impl ViewportManager {
     fn new(world: &World, initial_window: WinGeo) -> Self {
         ViewportManager {
+            nonce: 0,
             vp_pos: Point { x: 0.0, y: 0.0 },
             vp_geo: Geo { w: world.size.x as f64, h: world.size.y as f64 },
             window_geo: initial_window,
@@ -248,6 +250,7 @@ impl ViewportManager {
     fn handle_resize(&mut self, new_w: u32, new_h: u32) {
         self.window_geo.w = new_w;
         self.window_geo.h = new_h;
+        self.nonce.wrapping_add(1);
     }
 
     fn zoom(&mut self, factor: ZoomFactor) {
@@ -261,12 +264,14 @@ impl ViewportManager {
         }
         self.vp_pos.x += factor / 2.0;
         self.vp_pos.y += factor / 2.0;
+        self.nonce.wrapping_add(1);
     }
 
     fn pan(&mut self, m: Mvmt) {
         let sl = self.window_geo.w as f64 / self.vp_geo.w;
         self.vp_pos.x -= m.dx / sl;
         self.vp_pos.y -= m.dy / sl;
+        self.nonce.wrapping_add(1);
     }
 
     fn predraw(&self, w: &World, raw_mouse: &Point) -> PredrawData {
@@ -311,30 +316,46 @@ impl ViewportManager {
         }
     }
 
-    fn draw(&self, pd: &PredrawData, w: &World, c: &Context, g: &mut G2d) {
+    fn draw(&self, window: &mut PistonWindow, pd: &PredrawData, w: &World, ldr: &mut LastDrawnNonces, evt: &Input) {
+        println!("{} -- {} | {} -- {}", ldr.world_ld_nonce, w.nonce, ldr.vp_ld_nonce, self.nonce);
+
         let &PredrawData { sl, head, offset, start, end, maybe_mouse } = pd;
 
-        for x in start.x..end.x {
-            for y in start.y..end.y {
-                if w.active[y][x] {
-                    rectangle(ALIVE_COLOR,
-                              [((x - start.x) as f64 + offset.x - head.w) * sl,
-                               ((y - start.y) as f64 + offset.y - head.h) * sl,
-                               sl, sl],
-                              c.transform, g);
+        if ldr.world_ld_nonce != w.nonce || ldr.vp_ld_nonce != self.nonce {
+            ldr.world_ld_nonce = w.nonce;
+            ldr.vp_ld_nonce = self.nonce;
+
+            window.draw_2d(evt, |c, g| {
+                clear(BASE_COLOR, g);
+
+                for x in start.x..end.x {
+                    for y in start.y..end.y {
+                        if w.active[y][x] {
+                            rectangle(ALIVE_COLOR,
+                                      [((x - start.x) as f64 + offset.x - head.w) * sl,
+                                       ((y - start.y) as f64 + offset.y - head.h) * sl,
+                                       sl, sl],
+                                      c.transform, g);
+                        }
+                    }
                 }
-            }
+            });
+
         }
 
         if let Some(mouse) = maybe_mouse {
             if mouse.x >= start.x && mouse.y >= start.y {
-                rectangle(OVERLAY_COLOR,
-                          [((mouse.x - start.x) as f64 + offset.x - head.w) * sl,
-                           ((mouse.y - start.y) as f64 + offset.y - head.h) * sl,
-                           sl, sl],
-                          c.transform, g);
+                window.draw_2d(evt, |c, g| {
+                    rectangle(OVERLAY_COLOR,
+                              [((mouse.x - start.x) as f64 + offset.x - head.w) * sl,
+                               ((mouse.y - start.y) as f64 + offset.y - head.h) * sl,
+                               sl, sl],
+                              c.transform, g);
+                });
             }
         }
+        
+        window.swap_buffers();
     }
 }
 
@@ -394,6 +415,7 @@ impl std::fmt::Display for CoordArray<bool> {
 }
 
 struct World {
+    nonce: usize,
     size: Coord,
     active: CoordArray<bool>,
     staged: CoordArray<bool>,
@@ -466,6 +488,7 @@ impl std::fmt::Display for NeighborsIter {
 impl World {
     fn new(size: Coord) -> Self {
         World {
+            nonce: 0,
             size: size,
             active: CoordArray::new_filled(false, size),
             staged: CoordArray::new_filled(false, size),
@@ -501,6 +524,21 @@ impl World {
 
     fn swap_staged(&mut self) {
         std::mem::swap(&mut self.active, &mut self.staged);
+        self.nonce.wrapping_add(1);
+    }
+}
+
+struct LastDrawnNonces {
+    world_ld_nonce: usize,
+    vp_ld_nonce: usize,
+}
+
+impl LastDrawnNonces {
+    fn new() -> Self {
+        LastDrawnNonces {
+            world_ld_nonce: 100,  // some non-zero starting value
+            vp_ld_nonce: 100,  // some non-zero starting value
+        }
     }
 }
 
@@ -521,6 +559,7 @@ fn main() {
     let mut window: PistonWindow =
         WindowSettings::new("Conway's Game of Life", [WIDTH, HEIGHT]).build().unwrap();
     window.events.set_ups(1);
+    window.set_swap_buffers(false);
 
     let mut im = InputManager::new();
     let mut vp = ViewportManager::new(&world, WinGeo { w: WIDTH, h: HEIGHT });
@@ -529,6 +568,8 @@ fn main() {
     let mut speed = 1;
 
     update_title(&mut window, paused, speed);
+
+    let mut ldr = LastDrawnNonces::new();
 
     while let Some(ref evt) = window.next() {
         let pd = vp.predraw(&world, &im.mouse_pos);
@@ -577,9 +618,6 @@ fn main() {
             }
         }
 
-        window.draw_2d(evt, |c, g| {
-            clear(BASE_COLOR, g);
-            vp.draw(&pd, &world, &c, g);
-        });
+        vp.draw(&mut window, &pd, &world, &mut ldr, evt);
     }
 }
